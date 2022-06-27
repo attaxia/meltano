@@ -6,11 +6,13 @@ import json
 import os
 import subprocess
 from contextlib import contextmanager
-from threading import Lock
+from pathlib import Path
+from tempfile import gettempdir
 from typing import Any
 from urllib.request import urlopen
 
 import backoff
+import fasteners
 import pytest
 
 from meltano.core.project_settings_service import ProjectSettingsService
@@ -91,7 +93,9 @@ def snowplow_session(request) -> SnowplowMicro | None:
             yield None
 
 
-snowplow_lock = Lock()
+snowplow_lock = fasteners.InterProcessLock(
+    Path(gettempdir()) / "meltano_pytest_snowplow.lock"
+)
 
 
 @pytest.fixture
