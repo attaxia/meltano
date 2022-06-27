@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 from contextlib import contextmanager
+from threading import Lock
 from typing import Any
 from urllib.request import urlopen
 
@@ -90,6 +91,9 @@ def snowplow_session(request) -> SnowplowMicro | None:
             yield None
 
 
+snowplow_lock = Lock()
+
+
 @pytest.fixture
 def snowplow_optional(
     snowplow_session: SnowplowMicro | None, monkeypatch
@@ -105,21 +109,22 @@ def snowplow_optional(
     if snowplow_session is None:
         yield None
     else:
-        if isinstance(ProjectSettingsService.config_override, dict):
-            monkeypatch.delitem(
-                ProjectSettingsService.config_override,
-                "send_anonymous_usage_stats",
-                raising=False,
+        with snowplow_lock:
+            if isinstance(ProjectSettingsService.config_override, dict):
+                monkeypatch.delitem(
+                    ProjectSettingsService.config_override,
+                    "send_anonymous_usage_stats",
+                    raising=False,
+                )
+            monkeypatch.setenv("MELTANO_SEND_ANONYMOUS_USAGE_STATS", "True")
+            monkeypatch.setenv(
+                "MELTANO_SNOWPLOW_COLLECTOR_ENDPOINTS",
+                f'["{snowplow_session.collector_endpoint}"]',
             )
-        monkeypatch.setenv("MELTANO_SEND_ANONYMOUS_USAGE_STATS", "True")
-        monkeypatch.setenv(
-            "MELTANO_SNOWPLOW_COLLECTOR_ENDPOINTS",
-            f'["{snowplow_session.collector_endpoint}"]',
-        )
-        try:
-            yield snowplow_session
-        finally:
-            snowplow_session.reset()
+            try:
+                yield snowplow_session
+            finally:
+                snowplow_session.reset()
 
 
 @pytest.fixture
